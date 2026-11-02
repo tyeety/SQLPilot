@@ -102,8 +102,77 @@ class Program
         ExplorerChecks.Run(check);
         LibraryChecks.Run(check);
         UpdateChecks.Run(check);
+        CheckHoverCard(check);
         Console.WriteLine(n + " workspace checks passed.");
     }
+    static void CheckHoverCard(Action<bool, string> check)
+    {
+        Action<int> pump = milliseconds =>
+        {
+            var frame = new System.Windows.Threading.DispatcherFrame();
+            var stop = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(milliseconds) };
+            stop.Tick += (_, __) => { stop.Stop(); frame.Continue = false; };
+            stop.Start();
+            System.Windows.Threading.Dispatcher.PushFrame(frame);
+        };
+        var anchor = new System.Windows.Controls.Border();
+        var window = new System.Windows.Window { Content = anchor, ShowActivated = false, WindowStartupLocation = System.Windows.WindowStartupLocation.Manual, Left = -30000, Top = -30000, Width = 320, Height = 180 };
+        var card = new SqlPilot.UI.HoverCard();
+        int builds = 0, loaded = 0, unloaded = 0;
+        Func<System.Windows.UIElement> build = () =>
+        {
+            builds++;
+            var border = new System.Windows.Controls.Border { Child = new System.Windows.Controls.TextBlock { Text = "Fixture column metadata" } };
+            border.Loaded += (_, __) => loaded++;
+            border.Unloaded += (_, __) => unloaded++;
+            return border;
+        };
+        var viewport = new System.Windows.Rect(0, 0, 320, 180);
+        var target = new System.Windows.Rect(15, 15, 80, 18);
+        try
+        {
+            window.Show();
+            card.Show("column:one", build, anchor, target, viewport);
+            pump(40);
+            check(card.IsOpen && builds == 1 && loaded == 1, "Actual WPF metadata popup opens once");
+            var content = card.Content;
+            for (int i = 0; i < 100; i++)
+            {
+                card.Show("column:one", build, anchor, target, viewport);
+                card.Layout(viewport);
+            }
+            pump(40);
+            check(card.IsOpen && builds == 1 && loaded == 1 && unloaded == 0 && ReferenceEquals(content, card.Content), "Repeated hover and unchanged layouts preserve the same live popup without unload/reopen");
+            card.TrackPointer(false);
+            pump(60);
+            check(card.IsOpen, "Crossing the short gap to the card does not immediately close it");
+            card.TrackPointer(true);
+            pump(300);
+            check(card.IsOpen && builds == 1, "Returning to the target cancels pending dismissal without rebuilding");
+            card.TrackPointer(false);
+            pump(320);
+            check(!card.IsOpen, "Leaving both target and metadata card dismisses after the grace period");
+            card.Show("column:two", build, anchor, target, viewport);
+            pump(30);
+            check(card.IsOpen && builds == 2, "Hovering a different column opens its new content");
+            card.Layout(new System.Windows.Rect(0, 20, 320, 180));
+            check(!card.IsOpen, "Actual scrolling dismisses stale metadata instead of leaving it at an old location");
+            card.Show("column:two", build, anchor, target, viewport);
+            card.Dismiss();
+            check(!card.IsOpen && card.Content == null, "Typing, connection refresh or explicit dismissal releases the metadata content");
+            card.Show("column:two", build, anchor, target, viewport);
+            var escape = new System.Windows.Input.KeyEventArgs(System.Windows.Input.Keyboard.PrimaryDevice, System.Windows.PresentationSource.FromVisual(window), Environment.TickCount, System.Windows.Input.Key.Escape) { RoutedEvent = System.Windows.Input.Keyboard.PreviewKeyDownEvent };
+            card.Content.RaiseEvent(escape);
+            check(!card.IsOpen && escape.Handled, "Escape also dismisses a metadata card when its own content receives keyboard input");
+            card.Show("column:two", build, anchor, target, viewport);
+            card.TrackPointer(false);
+            card.Dispose();
+            pump(300);
+            check(!card.IsOpen && card.Content == null, "Disposal cancels delayed hover callbacks and clears popup content");
+        }
+        finally { card.Dispose(); window.Close(); }
+    }
+
 }
 namespace SqlPilot.Ssms
 {

@@ -2,6 +2,14 @@
 
 Each published change updates the source repository and has a matching GitHub Release.
 
+## [0.13.12](https://github.com/tyeety/SQLPilot/releases/tag/v0.13.12) — 2026-11-02
+
+- Keep metadata hover cards open for repeated hover events on the same token instead of closing and rebuilding them.
+- Anchor the popup beneath the identifier, without mouse capture or automatic tooltip dismissal.
+- Preserve cards during background editor layout updates; dismiss stale cards on scrolling, typing, connection changes or leaving the editor/card.
+- Allow a short pointer transition from the token to its card so metadata can be read and scrolled without flicker.
+- Add actual WPF popup lifecycle checks for repeated hover/layout events, pointer transitions, scrolling and disposal, plus quoted-token anchor coverage.
+
 ## [0.13.11](https://github.com/tyeety/SQLPilot/releases/tag/v0.13.11) — 2026-10-19
 
 - Assign a keyboard shortcut to each saved library script; open an independent SQL tab with that shortcut, without executing SQL or changing the saved script.

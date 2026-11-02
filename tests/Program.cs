@@ -568,4 +568,9 @@ hoveredTable.ColumnDetails = new List<InsertColumn> { new InsertColumn { Name = 
 var boundedHover = Describe("SELECT Total FROM sales.Orders", "Total");
 Check(boundedHover.Body.Length < 500 && boundedHover.Body.Contains("COMPUTED"), "Hover bounds long default expressions and shows computed metadata");
 hoveredTable.ColumnDetails = oldDetails;
+string quotedHover = "SELECT [o].[Total] FROM sales.Orders [o]";
+var quotedDescription = Engine.DescribeAt(quotedHover, quotedHover.IndexOf("Total", StringComparison.Ordinal), hoverCatalog);
+Check(quotedHover.Substring(quotedDescription.Start, quotedDescription.Length) == "[Total]", "Hover tracks the whole quoted token for stable pointer bounds");
+var schemaDescription = Engine.DescribeAt("SELECT * FROM sales.Orders", 15, hoverCatalog);
+Check(schemaDescription.Start == 14 && schemaDescription.Length == 5, "Schema hover anchors its own token rather than the mouse position");
 Console.WriteLine($"{checks} checks passed.");

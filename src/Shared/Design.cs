@@ -55,4 +55,95 @@ namespace SqlPilot.UI
             return new Button { Content = label, Background = Accent, Foreground = Brushes.White, BorderBrush = Accent, IsDefault = true };
         }
     }
+    // Shared popup lifecycle keeps editor hover stable without capturing the mouse.
+    internal sealed class HoverCard : IDisposable
+    {
+        readonly System.Windows.Controls.Primitives.Popup popup = new System.Windows.Controls.Primitives.Popup
+        {
+            Placement = System.Windows.Controls.Primitives.PlacementMode.Relative,
+            StaysOpen = true,
+            AllowsTransparency = true,
+            Focusable = false
+        };
+        readonly System.Windows.Threading.DispatcherTimer leave = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        string identity;
+        Rect viewport;
+        bool onTarget;
+        internal bool IsOpen => popup.IsOpen;
+        internal bool IsPointerOver => popup.Child?.IsMouseOver == true;
+        internal UIElement Content => popup.Child;
+        internal HoverCard() => leave.Tick += LeaveTick;
+        void LeaveTick(object sender, EventArgs e) => CloseIfOutside();
+        internal bool Show(string key, Func<UIElement> build, UIElement anchor, Rect target, Rect currentViewport)
+        {
+            leave.Stop();
+            onTarget = true;
+            if (popup.IsOpen && identity == key && popup.PlacementTarget == anchor)
+                return false;
+            Dismiss();
+            onTarget = true;
+            var content = build();
+            content.MouseEnter += EnterCard;
+            content.MouseLeave += LeaveCard;
+            content.PreviewKeyDown += Key;
+            popup.Child = content;
+            popup.PlacementTarget = anchor;
+            popup.HorizontalOffset = Math.Max(0, Math.Min(target.Left, currentViewport.Width - 540));
+            popup.VerticalOffset = target.Bottom + 4;
+            viewport = currentViewport;
+            identity = key;
+            popup.IsOpen = true;
+            return true;
+        }
+        void Key(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == System.Windows.Input.Key.Escape)
+            {
+                Dismiss();
+                e.Handled = true;
+            }
+        }
+        void EnterCard(object sender, System.Windows.Input.MouseEventArgs e) => leave.Stop();
+        void LeaveCard(object sender, System.Windows.Input.MouseEventArgs e) => TrackPointer(false);
+        internal void TrackPointer(bool overTarget)
+        {
+            onTarget = overTarget;
+            if (overTarget || IsPointerOver)
+                leave.Stop();
+            else if (popup.IsOpen && !leave.IsEnabled)
+                leave.Start();
+        }
+        internal void CloseIfOutside()
+        {
+            leave.Stop();
+            if (!onTarget && !IsPointerOver)
+                Dismiss();
+        }
+        internal void Layout(Rect currentViewport)
+        {
+            if (popup.IsOpen && viewport != currentViewport)
+                Dismiss();
+        }
+        internal void Dismiss()
+        {
+            leave.Stop();
+            popup.IsOpen = false;
+            identity = null;
+            onTarget = false;
+            if (popup.Child != null)
+            {
+                popup.Child.MouseEnter -= EnterCard;
+                popup.Child.MouseLeave -= LeaveCard;
+                popup.Child.PreviewKeyDown -= Key;
+                popup.Child = null;
+            }
+        }
+        public void Dispose()
+        {
+            Dismiss();
+            leave.Tick -= LeaveTick;
+            popup.PlacementTarget = null;
+        }
+    }
+
 }

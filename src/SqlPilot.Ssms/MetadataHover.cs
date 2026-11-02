@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -17,13 +18,18 @@ namespace SqlPilot.Ssms
     {
         readonly IWpfTextView view;
         readonly Func<IEnumerable<DbObject>> catalog;
-        readonly ToolTip tip = new ToolTip { Placement = PlacementMode.Mouse, MaxWidth = 560, StaysOpen = false };
+        readonly SqlPilot.UI.HoverCard card = new SqlPilot.UI.HoverCard();
+        ITextSnapshot hoveredSnapshot;
+        Span hoveredSpan;
+        Rect target;
+        Rect Viewport => new Rect(view.ViewportLeft, view.ViewportTop, view.ViewportWidth, view.ViewportHeight);
         internal MetadataHover(IWpfTextView view, Func<IEnumerable<DbObject>> catalog)
         {
             this.view = view;
             this.catalog = catalog;
             view.MouseHover += Hover;
             view.VisualElement.MouseLeave += Leave;
+            view.VisualElement.MouseMove += Move;
             view.VisualElement.PreviewKeyDown += Key;
             view.TextBuffer.Changed += Changed;
             view.LostAggregateFocus += LostFocus;
@@ -35,30 +41,58 @@ namespace SqlPilot.Ssms
             {
                 if (view.IsClosed || !view.HasAggregateFocus || Mouse.LeftButton != MouseButtonState.Released)
                     return;
-                var description = Engine.DescribeAt(view.TextBuffer.CurrentSnapshot.GetText(), args.Position, catalog());
-                tip.IsOpen = false;
-                if (description == null)
+                var snapshot = view.TextBuffer.CurrentSnapshot;
+                if (card.IsOpen && hoveredSnapshot == snapshot && hoveredSpan.Contains(args.Position))
+                {
+                    card.TrackPointer(true);
                     return;
+                }
+                var description = Engine.DescribeAt(snapshot.GetText(), args.Position, catalog());
+                if (description == null)
+                {
+                    Dismiss();
+                    return;
+                }
+                var span = new SnapshotSpan(snapshot, description.Start, description.Length);
+                var bounds = view.TextViewLines.GetNormalizedTextBounds(span).FirstOrDefault();
+                if (bounds == null)
+                {
+                    Dismiss();
+                    return;
+                }
+                target = new Rect(bounds.Left - view.ViewportLeft, bounds.Top - view.ViewportTop, Math.Max(2, bounds.Width), bounds.Height);
+                hoveredSnapshot = snapshot;
+                hoveredSpan = span.Span;
                 var panel = new StackPanel { MaxWidth = 510, Resources = SqlPilot.UI.Design.Resources() };
                 panel.Children.Add(new TextBlock { Text = description.Title, FontWeight = FontWeights.SemiBold, Foreground = SqlPilot.UI.Design.Accent, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 7) });
                 panel.Children.Add(new TextBlock { Text = description.Body, Foreground = SqlPilot.UI.Design.Ink, TextWrapping = TextWrapping.Wrap, FontFamily = new System.Windows.Media.FontFamily("Consolas"), FontSize = 12 });
-                tip.Content = new ScrollViewer { Content = panel, MaxHeight = 380, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-                tip.PlacementTarget = view.VisualElement;
-                tip.IsOpen = true;
+                card.Show(snapshot.Version.VersionNumber + ":" + description.Start + ":" + description.Length,
+                    () => SqlPilot.UI.Design.Card(new ScrollViewer { Content = panel, MaxWidth = 510, MaxHeight = 380, VerticalScrollBarVisibility = ScrollBarVisibility.Auto }),
+                    view.VisualElement, target, Viewport);
             }
-            catch (Exception ex) { tip.IsOpen = false; Diagnostics.Write("Metadata hover: " + ex.GetType().Name); }
+            catch (Exception ex) { Dismiss(); Diagnostics.Write("Metadata hover: " + ex.GetType().Name); }
         }
-        void Leave(object sender, MouseEventArgs e) => tip.IsOpen = false;
-        void Key(object sender, KeyEventArgs e) => tip.IsOpen = false;
-        void Changed(object sender, TextContentChangedEventArgs e) => tip.IsOpen = false;
-        void LostFocus(object sender, EventArgs e) => tip.IsOpen = false;
-        void Layout(object sender, TextViewLayoutChangedEventArgs e) => tip.IsOpen = false;
-        internal void Dismiss() => tip.IsOpen = false;
+        void Move(object sender, MouseEventArgs e) => card.TrackPointer(target.Contains(e.GetPosition(view.VisualElement)));
+        void Leave(object sender, MouseEventArgs e) => card.TrackPointer(false);
+        void Key(object sender, KeyEventArgs e) => Dismiss();
+        void Changed(object sender, TextContentChangedEventArgs e) => Dismiss();
+        void LostFocus(object sender, EventArgs e)
+        {
+            if (!card.IsPointerOver)
+                Dismiss();
+        }
+        void Layout(object sender, TextViewLayoutChangedEventArgs e) => card.Layout(Viewport);
+        internal void Dismiss()
+        {
+            card.Dismiss();
+            hoveredSnapshot = null;
+        }
         public void Dispose()
         {
-            tip.IsOpen = false;
+            card.Dispose();
             view.MouseHover -= Hover;
             view.VisualElement.MouseLeave -= Leave;
+            view.VisualElement.MouseMove -= Move;
             view.VisualElement.PreviewKeyDown -= Key;
             view.TextBuffer.Changed -= Changed;
             view.LostAggregateFocus -= LostFocus;

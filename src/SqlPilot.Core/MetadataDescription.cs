@@ -10,6 +10,14 @@ namespace SqlPilot.Core
 {
     public sealed class MetadataDescription
     {
+        public int Start
+        {
+            get; set;
+        }
+        public int Length
+        {
+            get; set;
+        }
         public string Title
         {
             get; set;
@@ -59,6 +67,12 @@ namespace SqlPilot.Core
             int index = tokens.FindIndex(t => position >= t.Offset && position < t.Offset + t.Text.Length);
             if (index < 0 || !(tokens[index].TokenType == TSqlTokenType.Identifier || tokens[index].TokenType == TSqlTokenType.QuotedIdentifier))
                 return null;
+            MetadataDescription AtToken(MetadataDescription result)
+            {
+                result.Start = tokens[index].Offset;
+                result.Length = tokens[index].Text.Length;
+                return result;
+            }
             int first = index, last = index;
             while (first >= 2 && tokens[first - 1].Text == ".")
                 first -= 2;
@@ -78,7 +92,7 @@ namespace SqlPilot.Core
                 if (matches.Count != 1)
                     return null;
                 var table = matches[0];
-                return DescribeTable(table, objects);
+                return AtToken(DescribeTable(table, objects));
             }
             int scope = SelectScopeStart(sql, position);
             if (parts.Count > 3)
@@ -88,7 +102,7 @@ namespace SqlPilot.Core
             {
                 var aliasOwners = bindings.Where(b => string.Equals(b.Item2, parts[0], StringComparison.OrdinalIgnoreCase)).Select(b => b.Item1).Distinct().ToList();
                 if (aliasOwners.Count == 1)
-                    return DescribeTable(aliasOwners[0], objects);
+                    return AtToken(DescribeTable(aliasOwners[0], objects));
             }
             string name = parts.Last();
             var candidates = bindings.Where(b => b.Item1.Columns.Contains(name, StringComparer.OrdinalIgnoreCase));
@@ -100,7 +114,7 @@ namespace SqlPilot.Core
             if (owners.Count != 1)
                 return null;
             var owner = owners[0];
-            return new MetadataDescription { Title = owner.Qualified + "." + DbObject.Quote(name), Body = "Column\n" + ColumnDescription(owner, name) };
+            return AtToken(new MetadataDescription { Title = owner.Qualified + "." + DbObject.Quote(name), Body = "Column\n" + ColumnDescription(owner, name) });
         }
     }
 }
