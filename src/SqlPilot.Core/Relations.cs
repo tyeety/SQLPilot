@@ -57,7 +57,7 @@ namespace SqlPilot.Core
                     parents.Push(start);
                 else if (t.Text == ")" && parents.Count > 0)
                     start = parents.Pop();
-                else if (t.Text.Equals("SELECT", StringComparison.OrdinalIgnoreCase))
+                else if (new[] { "SELECT", "UPDATE", "DELETE", "INSERT" }.Contains(t.Text.ToUpperInvariant()))
                     start = t.Offset;
                 else if (t.Text == ";" || t.TokenType == TSqlTokenType.Go)
                 {
@@ -72,11 +72,20 @@ namespace SqlPilot.Core
             var tokens = ContextTokens(sql);
             var result = new List<TSqlParserToken>();
             int depth = 0;
+            string command = null;
             for (int i = 0; i < tokens.Count; i++)
             {
                 var t = tokens[i];
                 if (t.Text == ")" && depth == 0 || t.Text == ";" || t.TokenType == TSqlTokenType.Go)
                     break;
+                string word = t.Text.ToUpperInvariant();
+                if (depth == 0 && new[] { "SELECT", "UPDATE", "DELETE", "INSERT" }.Contains(word))
+                {
+                    bool setSelect = word == "SELECT" && i > 0 && (new[] { "UNION", "INTERSECT", "EXCEPT" }.Contains(tokens[i - 1].Text.ToUpperInvariant()) || tokens[i - 1].Text.Equals("ALL", StringComparison.OrdinalIgnoreCase) && i > 1 && tokens[i - 2].Text.Equals("UNION", StringComparison.OrdinalIgnoreCase));
+                    if (command != null && !(command == "INSERT" && word == "SELECT") && !setSelect)
+                        break;
+                    command = word;
+                }
                 if (t.Text == "(" && i + 1 < tokens.Count && tokens[i + 1].Text.Equals("SELECT", StringComparison.OrdinalIgnoreCase))
                 {
                     int nested = 1;

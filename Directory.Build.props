@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <Version>0.13.12</Version>
+    <Version>0.13.13</Version>
     <Authors>Arash Ghasemi Rad</Authors>
     <Copyright>Copyright © 2026 Arash Ghasemi Rad. All rights reserved.</Copyright>
     <RepositoryUrl>https://github.com/tyeety/SQLPilot</RepositoryUrl>

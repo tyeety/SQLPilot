@@ -270,6 +270,13 @@ namespace SqlPilot.Core
                 }
             return positions.ToArray();
         }
+        static bool DirectDeleteFrom(List<TSqlParserToken> tokens, int index)
+        {
+            int delete = tokens.FindIndex(t => t.Text.Equals("DELETE", StringComparison.OrdinalIgnoreCase));
+            return delete >= 0 && index > delete && tokens[index].Text.Equals("FROM", StringComparison.OrdinalIgnoreCase) &&
+                (tokens[delete + 1].Text.Equals("FROM", StringComparison.OrdinalIgnoreCase) || tokens[delete + 1].Text.Equals("TOP", StringComparison.OrdinalIgnoreCase)) &&
+                !tokens.Skip(delete + 1).Take(index - delete - 1).Any(t => t.Text.Equals("FROM", StringComparison.OrdinalIgnoreCase));
+        }
         static List<Tuple<DbObject, string>> Bindings(string statement, List<DbObject> objects)
         {
             var tokens = ScopeTokens(statement);
@@ -290,6 +297,8 @@ namespace SqlPilot.Core
                 if (a < tokens.Count && tokens[a].Text.Equals("AS", StringComparison.OrdinalIgnoreCase))
                     a++;
                 string alias = a < tokens.Count && (tokens[a].TokenType == TSqlTokenType.Identifier || tokens[a].TokenType == TSqlTokenType.QuotedIdentifier) ? tokens[a].Text.Trim('[', ']', '"') : null;
+                if (new[] { "UPDATE", "INTO" }.Contains(tokens[i].Text.ToUpperInvariant()) || DirectDeleteFrom(tokens, i))
+                    alias = null;
                 foreach (var obj in objects.Where(o => Relation(o) && o.Name.Equals(name, StringComparison.OrdinalIgnoreCase) && (schema == null || o.Schema.Equals(schema, StringComparison.OrdinalIgnoreCase))))
                     result.Add(Tuple.Create(obj, alias));
             }
@@ -433,6 +442,7 @@ namespace SqlPilot.Core
                             InsertBody(item, obj, sql.Substring(caret));
                         // SQL Server does not accept an AS alias after INSERT INTO / UPDATE targets.
                         if (options.TableAliases && relations && new[] { "FROM", "JOIN", "APPLY" }.Contains(clause) &&
+                            (clause != "FROM" || !DirectDeleteFrom(tokens, tokens.FindLastIndex(t => t.Text.Equals("FROM", StringComparison.OrdinalIgnoreCase)))) &&
                             !(ContextTokens(sql.Substring(caret)).FirstOrDefault()?.TokenType == TSqlTokenType.Identifier) &&
                             !(ContextTokens(sql.Substring(caret)).FirstOrDefault()?.Text.Equals("AS", StringComparison.OrdinalIgnoreCase) ?? false))
                         {

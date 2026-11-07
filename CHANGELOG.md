@@ -2,6 +2,13 @@
 
 Each published change updates the source repository and has a matching GitHub Release.
 
+## [0.13.13](https://github.com/tyeety/SQLPilot/releases/tag/v0.13.13) — 2026-11-07
+
+- Isolate UPDATE/DELETE column and alias completion from neighboring statements, including scripts without semicolons.
+- Do not generate or infer aliases on direct UPDATE, INSERT INTO or DELETE FROM targets; retain aliases declared in actual FROM/JOIN sources.
+- Preserve valid UPDATE alias FROM and DELETE alias FROM column qualification.
+- Add DML target, WHERE scope and explicit-alias regression checks.
+
 ## [0.13.12](https://github.com/tyeety/SQLPilot/releases/tag/v0.13.12) — 2026-11-02
 
 - Keep metadata hover cards open for repeated hover events on the same token instead of closing and rebuilding them.

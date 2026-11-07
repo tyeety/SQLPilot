@@ -573,4 +573,22 @@ var quotedDescription = Engine.DescribeAt(quotedHover, quotedHover.IndexOf("Tota
 Check(quotedHover.Substring(quotedDescription.Start, quotedDescription.Length) == "[Total]", "Hover tracks the whole quoted token for stable pointer bounds");
 var schemaDescription = Engine.DescribeAt("SELECT * FROM sales.Orders", 15, hoverCatalog);
 Check(schemaDescription.Start == 14 && schemaDescription.Length == 5, "Schema hover anchors its own token rather than the mouse position");
+foreach (string head in new[] { "UPDATE dbo.Orders SET CustomerId=1 WHERE ", "DELETE FROM dbo.Orders WHERE " })
+{
+    foreach (string prior in new[] { "", "SELECT * FROM dbo.Orders o\n" })
+        foreach (string suffix in new[] { "", "\nSELECT * FROM dbo.Orders unrelated" })
+        {
+            string query = prior + head + suffix;
+            var rows = Engine.Complete(query, prior.Length + head.Length, objects, true, new CompletionOptions { QualifyColumns = true, TableAliases = true }).Where(c => c.Category == "Column").ToList();
+            Check(rows.Count == 2 && rows.All(c => c.Insert == DbObject.Quote(c.Label)), "DML WHERE never inherits aliases from adjacent statements: " + query.Replace('\n', ' '));
+        }
+}
+var deleteTarget = Engine.Complete("DELETE FROM Ord", 15, objects, options: new CompletionOptions { TableAliases = true }).Single();
+Check(!deleteTarget.Insert.Contains(" AS "), "Direct DELETE target does not receive an invalid AS alias");
+string joinedUpdate = "UPDATE o SET CustomerId=1 FROM dbo.Orders o WHERE ";
+var updateAliasColumns = Engine.Complete(joinedUpdate, joinedUpdate.Length, objects, true, new CompletionOptions { QualifyColumns = true }).Where(c => c.Category == "Column").ToList();
+Check(updateAliasColumns.Count == 2 && updateAliasColumns.All(c => c.Insert.StartsWith("[o].")), "UPDATE FROM retains explicitly declared source aliases");
+string joinedDelete = "DELETE o FROM dbo.Orders o WHERE ";
+var deleteAliasColumns = Engine.Complete(joinedDelete, joinedDelete.Length, objects, true, new CompletionOptions { QualifyColumns = true }).Where(c => c.Category == "Column").ToList();
+Check(deleteAliasColumns.Count == 2 && deleteAliasColumns.All(c => c.Insert.StartsWith("[o].")), "DELETE alias FROM retains explicitly declared source aliases");
 Console.WriteLine($"{checks} checks passed.");
